@@ -1,0 +1,429 @@
+theory PM_Adv_MaliciousUser_SeqB_TWEC_protocol
+
+begin
+
+functions: true/0
+
+functions: BA/1,BB/1, key/2
+
+functions: Noise/1, RawKey/1, Encode/2, Measure/2[private], Sift_key/3, GenKey/1, Sample/1, Check_NoEve/2[private], Correct/2
+
+equations: 
+        Measure( Encode(RawKey(key(Noise(kab),BA(ba))), BA(ba) ), BA(ba) ) = key(Noise(kab),BA(ba)),
+        Check_NoEve(Sample(Sift_key(RawKey(key(Noise(kab),BA(ba))), BA(ba), BB(bb) )), Sample(Sift_key(Measure( Encode(RawKey(key(Noise(kab),BA(ba))), BA(ba) ), BB(bb) ), BA(ba), BB(bb) )) )=true,
+        Check_NoEve(Sample_key, Sample_key)=true,
+        GenKey(Sift_key(RawKey(key(Noise(kab),BA(ba))), BA(ba), BB(bb) ))=Noise(kab),
+        GenKey(Sift_key(Measure( Encode(RawKey(key(Noise(kab),BA(ba))), BA(ba) ), BB(bb) ), BA(ba), BB(bb) ))=Noise(kab)
+
+functions: mac/2[private], verifymac/2 
+
+equations: verifymac(mac(msg,key),key)=msg
+
+restriction Eq_checks_succeed: "(All x y #j. Eq(x, y) @ j ==> x = y)"
+
+restriction Neq_checks_succeed: "(All x #j. Neq(x, x) @ j ==> F)"
+
+restriction Basis_Announcement_order_Sequential_Bob_First:
+"All A B BA BB #sBA #sBB #rBA #rBB.
+    Send_BA(A,B,BA)@sBA 
+  & Receive_BA(A,B,BA)@rBA
+  & Send_BB(B,A,BB)@sBB 
+  & Receive_BB(B,A,BB)@rBB
+  ==>   
+      #sBB<#rBB 
+    & #rBB<#sBA
+    & #sBA<#rBA
+"
+/* Session Setup rules */
+
+restriction OnlyOnce1:
+"All #i #j. OnlyOnce1() @i & OnlyOnce1() @j ==> #i = #j"
+
+restriction OnlyOnce2:
+"All #i #j. OnlyOnce2() @i & OnlyOnce2() @j ==> #i = #j"
+
+restriction OnlyOnce3:
+"All #i #j. OnlyOnce3() @i & OnlyOnce3() @j ==> #i = #j"
+
+rule Setup_AB:
+  [ Fr(~sid) ]
+  --[ OnlyOnce1()]->
+  [ 
+    SessionA('A','B',~sid),
+    SessionB('A','B',~sid) 
+  ]
+
+rule Setup_AE:
+  [ Fr(~sid) ]
+  --[ OnlyOnce2()]->
+  [ 
+    SessionA('A','E',~sid),
+    SessionB('A','E',~sid) 
+  ]
+
+rule Setup_EB:
+  [ Fr(~sid) ]
+  --[ OnlyOnce3()]->
+  [ 
+    SessionA('E','B',~sid),
+    SessionB('E','B',~sid) 
+  ]
+/* Quantum Channel rules */
+
+rule QChan_Out_In:
+  [ Out_QuantumChannel(roleA,roleB,qA) ]
+  --[ EveKnowns(qA), QChanOut(roleA,roleB,qA)]->
+  [ In_QuantumChannel(roleA,roleB,qA) ]
+/* Authenticated Classical Channel rules */
+/* Authenticated Classical Channel rules */
+
+rule ChanOut_Auth:
+  let
+    tag=mac(msg,key_roleA)
+  in
+[ !AuthSession(roleA,key_roleA), Out_Auth(roleA,roleB,msg,type) ]--[ AChanOut(roleA,<msg,type>) ]->
+[ !Auth(roleA,roleB,msg,tag,type)]
+
+rule ChanIn_Auth:
+  let
+  verifymac_tag=verifymac(tag,key_roleB)
+  in
+[ !AuthSession(roleB,key_roleB), !Auth(roleA,roleB,msg,tag,type)]--[ Eq(msg,verifymac_tag), AChanIn(roleA,roleB,<msg,type>) ]->
+[ In_Auth(roleA,roleB,msg,type) ]
+/* Malicious User Rules */
+
+rule Session_Eve_as_A:
+  [SessionA('E',Y,~sid_eb)] -->[SessAE('E',Y,~sid_eb), !AuthSession('E',~sid_eb), Out(~sid_eb)]
+
+rule Session_Eve_as_B:
+  [SessionB(X,'E',~sid_ae)] -->[SessEB(X,'E',~sid_ae), !AuthSession('E',~sid_ae), Out(~sid_ae)]
+
+rule Eve_as_B_receiveqA:
+  [SessAE(X,'E',sid_ae), In_QuantumChannel(X,'E',qAE)] --> [ Eve_StoreqA(qAE)]
+
+rule Eve_as_B_forwardqA_to_B_over_Eve_as_A:
+  [ SessEB('E',Y,sid_eb), Eve_StoreqA(qAE)] --> [Out_QuantumChannel('E',Y,qAE)]
+
+rule Eve_as_B_measureqA:
+  let
+    KBEraw=Measure(qAE,BU)
+  in
+  [In(BU), SessAE(X,'E',sid_ae), Eve_StoreqA(qAE)] --> [Out(KBEraw)]
+
+rule Eve_as_A_sendqA:
+  let
+    qEB=Encode(key(Noise(KE),BE),BE)
+  in
+  [In(<Y,KE,BE>)] --> [ Out_QuantumChannel('E',Y,qEB) ]
+
+rule Eve_as_A_In_Auth:
+  [ In(Sender), In_Auth(Sender,'E',msg,type)  ] --> [ Out(<msg,type>) ]
+
+rule Eve_as_A_Out_Auth:
+  [ In(<Receiver,msg,type>)] --> [ Out_Auth('E',Receiver,msg,type) ]
+
+rule Alice_quantum_phase:
+ let 
+    KAraw=RawKey(key(Noise(~kab),BA(~ba)))
+    qA=Encode(KAraw,BA(~ba))
+ in
+ [
+   Fr(~ba), 
+   Fr(~kab), 
+   SessionA('A',Y,~sid)
+ ] 
+ --[ 
+   SessionInitA('A',Y,~sid), 
+   Create_A('B',~sid)
+ ]-> 
+ [
+   !AuthSession('A',~sid),
+   Out_QuantumChannel('A',Y,qA),
+   Encoded('A',Y,~sid,KAraw), 
+   AliceBasis('A',Y,~sid,BA(~ba)), 
+   GetBobBasis('A',Y,~sid)
+ ]
+
+rule Alice_Send_BA:
+ [ AliceBasis('A',Y,~sid,BA) ]
+ --[ Send_BA('A',Y,BA) ]->
+ [
+   Out_Auth('A',Y,BA,'sift'), 
+   Alice_Sent_BA('A',Y,~sid,BA)
+ ]
+
+rule Alice_Receive_BB:
+ [
+   GetBobBasis('A',Y,~sid), 
+   In_Auth(Y,'A',BB,'sift')
+ ]
+ --[Receive_BB(Y,'A',BB)]->
+ [
+   Alice_Received_BB('A',Y,~sid,BB)
+ ]
+
+rule Alice_SiftA:
+ let 
+    KA=Sift_key(KAraw,BA,BB)
+ in
+ [ 
+   Encoded('A',Y,~sid,KAraw), 
+   Alice_Sent_BA('A',Y,~sid,BA), 
+   Alice_Received_BB('A',Y,~sid,BB) ]
+ --[SiftA('A',Y,~sid,KA)
+ ]->
+ [SifttedKeyA('A',Y,~sid,BB,KA), SampleKeyA('A',Y,~sid,KA), GetSampleA('A',Y,~sid)]
+
+rule Alice_Send_SampleA:
+ let
+    KsampleA=Sample(KA)
+ in
+ [SampleKeyA('A',Y,~sid,KA)]
+ --[Send_SampleA('A',Y,KsampleA)]->
+ [
+   Out_Auth('A',Y,KsampleA,'sample'), 
+   Alice_Sent_KsampleA('A',Y,~sid,KsampleA)
+ ]
+
+rule Alice_Receive_SampleB:
+ [GetSampleA('A',Y,~sid), In_Auth(Y,'A',KsampleB,'sample')]
+ --[Receive_SampleB(Y,'A',KsampleB)]->
+ [Alice_Received_KsampleB('A',Y,~sid,KsampleB)]
+
+rule Alice_Paramater_Estimation_NoEve:
+ let
+    NoEve=Check_NoEve(KsampleA,KsampleB)
+ in 
+ [
+   SifttedKeyA('A',Y,~sid,BB,KA), 
+   Alice_Sent_KsampleA('A',Y,~sid,KsampleA), 
+   Alice_Received_KsampleB('A',Y,~sid,KsampleB)
+ ]
+ --[
+  Eq(true,NoEve),
+  Running_A('A',Y,~sid)
+  ]->
+ [KeywithErrorA('A',Y,~sid,KA)]
+
+rule Alice_Paramater_Estimation_Eve:
+ let
+    NoEve=Check_NoEve(KsampleA,KsampleB)
+ in 
+ [
+   Alice_Sent_KsampleA('A',Y,~sid,KsampleA), 
+   Alice_Received_KsampleB('A',Y,~sid,KsampleB)
+ ]
+ --[
+   Neq(true,NoEve), 
+   EveDetected_A('A',Y,~sid)
+ ]->
+ []
+
+rule Bob_quantum_phase:
+ let 
+    KBraw=Measure(qA,BB(~bb)) 
+ in
+ [
+   Fr(~bb), 
+   SessionB(X,'B',~sid), 
+   In_QuantumChannel(X,'B',qA)
+ ] 
+ --[
+   SessionInitB(X,'B',~sid), 
+   Create_B('A',~sid)
+ ]-> 
+ [
+   !AuthSession('B',~sid),
+   Measured(X,'B',~sid,KBraw), 
+   BobBasis(X,'B',~sid,BB(~bb)), 
+   GetAliceBasis(X,'B',~sid)
+ ]
+
+rule Bob_Send_BB:
+ [ BobBasis(X,'B',~sid,BB) ]
+ --[ Send_BB('B',X,BB) ]->
+ [
+   Out_Auth('B',X,BB,'sift'), 
+   Bob_Sent_BB('B',X,~sid,BB)
+]
+
+rule Bob_Receive_BA:
+ [
+   GetAliceBasis(X,'B',~sid), 
+   In_Auth(X,'B',BA,'sift')
+ ]
+ --[ Receive_BA(X,'B',BA) ]->
+ [ Bob_Received_BA(X,'B',~sid,BA) ]
+
+rule Bob_SiftB:
+ let 
+  KB=Sift_key(KBraw,BA,BB)
+ in
+ [ 
+   Measured(X,'B',~sid,KBraw), 
+   Bob_Sent_BB('B',X,~sid,BB), 
+   Bob_Received_BA(X,'B',~sid,BA) 
+ ]
+ --[
+   SiftB(X,'B',~sid,KB)
+ ]->
+ [
+   SifttedKeyB(X,'B',~sid,BA,KB), 
+   SampleKeyB(X,'B',~sid,KB), 
+   GetSampleB(X,'B',~sid)
+ ]
+
+rule Bob_Send_SampleB:
+ let
+    KsampleB=Sample(KB)
+ in
+ [SampleKeyB(X,'B',~sid,KB)]
+ --[Send_SampleB('B',X,KsampleB)]->
+ [
+   Out_Auth('B',X,KsampleB,'sample'), 
+   Bob_Sent_KsampleB(X,'B',~sid,KsampleB)
+ ]
+
+rule Bob_Receive_SampleA:
+ [
+   GetSampleB(X,'B',~sid), 
+   In_Auth(X,'B',KsampleA,'sample')
+ ]
+ --[Receive_SampleA(X,'B',KsampleA)]->
+ [Bob_Received_KsampleA(X,'B',~sid,KsampleA)]
+
+rule Bob_Paramater_Estimation_NoEve:
+ let
+    NoEve=Check_NoEve(KsampleA,KsampleB)
+    KAB=GenKey(KB)
+ in 
+ [
+   SifttedKeyB(X,'B',~sid,BA,KB),
+   Bob_Sent_KsampleB(X,'B',~sid,KsampleB), 
+   Bob_Received_KsampleA(X,'B',~sid,KsampleA)
+ ]
+ --[
+  Eq(true,NoEve),
+  Running_B(X,'B',~sid)
+  ]->
+ [KeywithErrorB(X,'B',~sid,KB)]
+
+rule Bob_Paramater_Estimation_Eve:
+ let
+    NoEve=Check_NoEve(KsampleA,KsampleB)
+ in 
+ [
+   Bob_Sent_KsampleB(X,'B',~sid,KsampleB), 
+   Bob_Received_KsampleA(X,'B',~sid,KsampleA)
+ ]
+ --[
+   Neq(true,NoEve), 
+   EveDetected_B(X,'B',~sid)
+ ]->
+ []
+
+functions: FEC/1, REC/1
+
+equations: Correct(Noise(kab),<FEC(Noise(kab)),REC(Noise(kab))>)=kab
+
+rule Alice_Send_FEC:
+let NKAB=GenKey(KA)
+    EA=FEC(NKAB)
+in
+[KeywithErrorA('A',Y,~sid,KA)]
+-->
+[
+   NKeyA('A',Y,~sid,EA,NKAB),
+   Out_Auth('A',Y,EA,'error')
+]
+
+rule Alice_TWEC:
+ let
+    KAB=Correct(NKAB, <EA,EB>)
+ in 
+ [NKeyA('A',Y,~sid,EA,NKAB), In_Auth(Y,'A',EB,'error')]
+ --[CommitKey_A('A',Y,~sid,KAB) ]->
+ []
+
+rule Bob_Send_REC:
+ let
+    NKAB=GenKey(KB)
+    EB=REC(NKAB)
+ in 
+ [KeywithErrorB(X,'B',~sid,KB)]
+ -->
+ [NKeyA(X,'B',~sid,EB,NKAB), Out_Auth('B',X,EB,'error')]
+
+rule Bob_TWEC:
+ let
+    KAB=Correct(NKAB,<EA,EB>)
+ in 
+ [NKeyA(X,'B',~sid,EB,NKAB), In_Auth(X,'B',EA,'error')]
+ --[ CommitKey_B(X,'B',~sid,KAB) ]->
+ []
+
+lemma Executability[sources]:
+exists-trace
+"Ex A B sid Kab #i #j.
+      CommitKey_A(A,B,sid,Kab)@i
+    & CommitKey_B(A,B,sid,Kab)@j    
+"
+
+lemma messsage_authenticiation[sources]:
+"All A B msg #i.
+     AChanIn(A,B,msg)@i ==> 
+     Ex #k. AChanOut(A,msg)@k"
+
+lemma secret_key_A:
+"All A B sid Kab #init #i #j.
+    SessionInitA(A,B,sid)@init
+  & CommitKey_A(A,B,sid,Kab)@i
+  & K(Kab)@j
+  ==> F
+"
+
+lemma secret_key_B:
+"All A B sid Kab #init #i #j.
+    SessionInitB(A,B,sid)@init
+  & CommitKey_B(A,B,sid,Kab)@i
+  & K(Kab)@j
+  ==> F
+"
+
+lemma aliveness_A:
+  "All B sid kab #i.
+    CommitKey_A('A',B,sid,kab) @i
+    ==> (Ex #j. Create_B('A',sid) @j)
+  "
+
+lemma aliveness_B:
+  "All A sid kab #i.
+    CommitKey_B(A,'B',sid,kab) @i
+    ==> (Ex #j. Create_A('B',sid) @j
+      & j < i)
+  "
+
+lemma weak_agreement_A:
+  "All B sid kab #i.
+  CommitKey_A('A',B,sid,kab) @i
+    ==> (Ex sid2 #j. Running_B('A',B,sid2) @j)
+  "
+
+lemma weak_agreement_B:
+  "All A sid kab #i.
+  CommitKey_B(A,'B',sid,kab) @i
+    ==> (Ex sid2 #j. Running_A(A,'B',sid2) @j)
+  "
+
+lemma noninjectiveagreement_A:
+  "All B sid kab #i.
+    CommitKey_A('A',B,sid,kab) @i
+    ==> (Ex #j. CommitKey_B('A',B,sid,kab) @j)
+  "
+
+lemma noninjectiveagreement_B:
+  "All A sid kab #i.
+    CommitKey_B(A,'B',sid,kab) @i
+    ==> (Ex #j. CommitKey_A(A,'B',sid,kab) @j)
+  "
+end

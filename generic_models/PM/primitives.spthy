@@ -1,0 +1,19 @@
+// HEURISTICS = [ 's', 'S', 'c', 'C', 'i', 'I' ]
+// // heuristic: S
+
+// Built-in functions
+functions: true/0
+functions: BA/1,BB/1, key/2
+functions: Noise/1, RawKey/1, Encode/2, Measure/2[private], Sift_key/3, GenKey/1, Sample/1, Check_NoEve/2[private], Correct/2
+equations: 
+// Measuring encoded qubits with the same measurement basis with same basis gives original raw key
+        Measure( Encode(RawKey(key(Noise(kab),BA(ba))), BA(ba) ), BA(ba) ) = key(Noise(kab),BA(ba)),
+// If sampled keys originated from undisturbed source 
+        Check_NoEve(Sample(Sift_key(RawKey(key(Noise(kab),BA(ba))), BA(ba), BB(bb) )), Sample(Sift_key(Measure( Encode(RawKey(key(Noise(kab),BA(ba))), BA(ba) ), BB(bb) ), BA(ba), BB(bb) )) )=true,
+        Check_NoEve(Sample_key, Sample_key)=true,
+        GenKey(Sift_key(RawKey(key(Noise(kab),BA(ba))), BA(ba), BB(bb) ))=Noise(kab),
+        GenKey(Sift_key(Measure( Encode(RawKey(key(Noise(kab),BA(ba))), BA(ba) ), BB(bb) ), BA(ba), BB(bb) ))=Noise(kab)
+
+
+functions: mac/2[private], verifymac/2, psk/1
+equations: verifymac(mac(msg,psk(id)),psk(id))=msg

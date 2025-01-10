@@ -1,0 +1,1734 @@
+theory PM_Adv_MaliciousUser_SeqB_TWEC_protocol begin
+
+// Function signature and definition of the equational theory E
+
+functions: BA/1, BB/1, Check_NoEve/2[private,destructor], Correct/2,
+           Encode/2, FEC/1, GenKey/1, Measure/2[private,destructor], Noise/1, REC/1,
+           RawKey/1, Sample/1, Sift_key/3, fst/1, key/2, mac/2[private,destructor],
+           pair/2, snd/1, true/0, verifymac/2
+equations:
+    Check_NoEve(Sample_key, Sample_key) = true,
+    Check_NoEve(Sample(Sift_key(RawKey(key(Noise(kab), BA(ba))), BA(ba),
+                                BB(bb))),
+                Sample(Sift_key(Measure(Encode(RawKey(key(Noise(kab), BA(ba))), BA(ba)),
+                                        BB(bb)),
+                                BA(ba), BB(bb))))
+  = true,
+    Correct(Noise(kab), <FEC(Noise(kab)), REC(Noise(kab))>) = kab,
+    GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(kab), BA(ba))), BA(ba)),
+                            BB(bb)),
+                    BA(ba), BB(bb)))
+  = Noise(kab),
+    GenKey(Sift_key(RawKey(key(Noise(kab), BA(ba))), BA(ba), BB(bb)))
+  = Noise(kab),
+    Measure(Encode(RawKey(key(Noise(kab), BA(ba))), BA(ba)), BA(ba))
+  = key(Noise(kab), BA(ba)),
+    fst(<x.1, x.2>) = x.1,
+    snd(<x.1, x.2>) = x.2,
+    verifymac(mac(msg, key), key) = msg
+
+
+
+
+
+restriction Eq_checks_succeed:
+  "∀ x y #j. (Eq( x, y ) @ #j) ⇒ (x = y)"
+  // safety formula
+
+restriction Neq_checks_succeed:
+  "∀ x #j. (Neq( x, x ) @ #j) ⇒ (⊥)"
+  // safety formula
+
+restriction Basis_Announcement_order_Sequential_Bob_First:
+  "∀ A B BA BB #sBA #sBB #rBA #rBB.
+    ((((Send_BA( A, B, BA ) @ #sBA) ∧ (Receive_BA( A, B, BA ) @ #rBA)) ∧
+      (Send_BB( B, A, BB ) @ #sBB)) ∧
+     (Receive_BB( B, A, BB ) @ #rBB)) ⇒
+    (((#sBB < #rBB) ∧ (#rBB < #sBA)) ∧ (#sBA < #rBA))"
+  // safety formula
+
+restriction OnlyOnce1:
+  "∀ #i #j. ((OnlyOnce1( ) @ #i) ∧ (OnlyOnce1( ) @ #j)) ⇒ (#i = #j)"
+  // safety formula
+
+restriction OnlyOnce2:
+  "∀ #i #j. ((OnlyOnce2( ) @ #i) ∧ (OnlyOnce2( ) @ #j)) ⇒ (#i = #j)"
+  // safety formula
+
+restriction OnlyOnce3:
+  "∀ #i #j. ((OnlyOnce3( ) @ #i) ∧ (OnlyOnce3( ) @ #j)) ⇒ (#i = #j)"
+  // safety formula
+
+rule (modulo E) Setup_AB:
+   [ Fr( ~sid ) ]
+  --[ OnlyOnce1( ) ]->
+   [ SessionA( 'A', 'B', ~sid ), SessionB( 'A', 'B', ~sid ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Setup_AE:
+   [ Fr( ~sid ) ]
+  --[ OnlyOnce2( ) ]->
+   [ SessionA( 'A', 'E', ~sid ), SessionB( 'A', 'E', ~sid ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Setup_EB:
+   [ Fr( ~sid ) ]
+  --[ OnlyOnce3( ) ]->
+   [ SessionA( 'E', 'B', ~sid ), SessionB( 'E', 'B', ~sid ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) QChan_Out_In:
+   [ Out_QuantumChannel( roleA, roleB, qA ) ]
+  --[ EveKnowns( qA ), QChanOut( roleA, roleB, qA ) ]->
+   [ In_QuantumChannel( roleA, roleB, qA ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanOut_Auth:
+   [ !AuthSession( roleA, key_roleA ), Out_Auth( roleA, roleB, msg, type ) ]
+  --[ AChanOut( roleA, <msg, type> ) ]->
+   [ !Auth( roleA, roleB, msg, mac(msg, key_roleA), type ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ChanIn_Auth:
+   [ !AuthSession( roleB, key_roleB ), !Auth( roleA, roleB, msg, tag, type )
+   ]
+  --[
+  Eq( msg, verifymac(tag, key_roleB) ),
+  AChanIn( roleA, roleB, <msg, type> )
+  ]->
+   [ In_Auth( roleA, roleB, msg, type ) ]
+
+  /*
+  rule (modulo AC) ChanIn_Auth:
+     [ !AuthSession( roleB, key_roleB ), !Auth( roleA, roleB, msg, tag, type )
+     ]
+    --[ Eq( msg, z ), AChanIn( roleA, roleB, <msg, type> ) ]->
+     [ In_Auth( roleA, roleB, msg, type ) ]
+    variants (modulo AC)
+    1. key_roleB
+             = key_roleB.8
+       tag   = tag.8
+       z     = verifymac(tag.8, key_roleB.8)
+    
+    2. key_roleB
+             = x.8
+       tag   = mac(x.12, x.8)
+       z     = x.12
+  */
+
+rule (modulo E) Session_Eve_as_A:
+   [ SessionA( 'E', Y, ~sid_eb ) ]
+  -->
+   [ SessAE( 'E', Y, ~sid_eb ), !AuthSession( 'E', ~sid_eb ), Out( ~sid_eb )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Session_Eve_as_B:
+   [ SessionB( X, 'E', ~sid_ae ) ]
+  -->
+   [ SessEB( X, 'E', ~sid_ae ), !AuthSession( 'E', ~sid_ae ), Out( ~sid_ae )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Eve_as_B_receiveqA:
+   [ SessAE( X, 'E', sid_ae ), In_QuantumChannel( X, 'E', qAE ) ]
+  -->
+   [ Eve_StoreqA( qAE ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Eve_as_B_forwardqA_to_B_over_Eve_as_A:
+   [ SessEB( 'E', Y, sid_eb ), Eve_StoreqA( qAE ) ]
+  -->
+   [ Out_QuantumChannel( 'E', Y, qAE ) ]
+
+  // loop breaker: [1]
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Eve_as_B_measureqA:
+   [ In( BU ), SessAE( X, 'E', sid_ae ), Eve_StoreqA( qAE ) ]
+  -->
+   [ Out( Measure(qAE, BU) ) ]
+
+  /*
+  rule (modulo AC) Eve_as_B_measureqA:
+     [ In( BU ), SessAE( X, 'E', sid_ae ), Eve_StoreqA( qAE ) ]
+    -->
+     [ Out( z ) ]
+    variants (modulo AC)
+    1. BU    = BU.8
+       qAE   = qAE.10
+       z     = Measure(qAE.10, BU.8)
+    
+    2. BU    = BA(x.10)
+       qAE   = Encode(RawKey(key(Noise(x.12), BA(x.10))), BA(x.10))
+       z     = key(Noise(x.12), BA(x.10))
+  */
+
+rule (modulo E) Eve_as_A_sendqA:
+   [ In( <Y, KE, BE> ) ]
+  -->
+   [ Out_QuantumChannel( 'E', Y, Encode(key(Noise(KE), BE), BE) ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Eve_as_A_In_Auth:
+   [ In( Sender ), In_Auth( Sender, 'E', msg, type ) ]
+  -->
+   [ Out( <msg, type> ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Eve_as_A_Out_Auth:
+   [ In( <Receiver, msg, type> ) ]
+  -->
+   [ Out_Auth( 'E', Receiver, msg, type ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Alice_quantum_phase:
+   [ Fr( ~ba ), Fr( ~kab ), SessionA( 'A', Y, ~sid ) ]
+  --[ SessionInitA( 'A', Y, ~sid ), Create_A( 'B', ~sid ) ]->
+   [
+   !AuthSession( 'A', ~sid ),
+   Out_QuantumChannel( 'A', Y,
+                       Encode(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba))
+   ),
+   Encoded( 'A', Y, ~sid, RawKey(key(Noise(~kab), BA(~ba))) ),
+   AliceBasis( 'A', Y, ~sid, BA(~ba) ), GetBobBasis( 'A', Y, ~sid )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Alice_Send_BA:
+   [ AliceBasis( 'A', Y, ~sid, BA ) ]
+  --[ Send_BA( 'A', Y, BA ) ]->
+   [ Out_Auth( 'A', Y, BA, 'sift' ), Alice_Sent_BA( 'A', Y, ~sid, BA ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Alice_Receive_BB:
+   [ GetBobBasis( 'A', Y, ~sid ), In_Auth( Y, 'A', BB, 'sift' ) ]
+  --[ Receive_BB( Y, 'A', BB ) ]->
+   [ Alice_Received_BB( 'A', Y, ~sid, BB ) ]
+
+  // loop breaker: [1]
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Alice_SiftA:
+   [
+   Encoded( 'A', Y, ~sid, KAraw ), Alice_Sent_BA( 'A', Y, ~sid, BA ),
+   Alice_Received_BB( 'A', Y, ~sid, BB )
+   ]
+  --[ SiftA( 'A', Y, ~sid, Sift_key(KAraw, BA, BB) ) ]->
+   [
+   SifttedKeyA( 'A', Y, ~sid, BB, Sift_key(KAraw, BA, BB) ),
+   SampleKeyA( 'A', Y, ~sid, Sift_key(KAraw, BA, BB) ),
+   GetSampleA( 'A', Y, ~sid )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Alice_Send_SampleA:
+   [ SampleKeyA( 'A', Y, ~sid, KA ) ]
+  --[ Send_SampleA( 'A', Y, Sample(KA) ) ]->
+   [
+   Out_Auth( 'A', Y, Sample(KA), 'sample' ),
+   Alice_Sent_KsampleA( 'A', Y, ~sid, Sample(KA) )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Alice_Receive_SampleB:
+   [ GetSampleA( 'A', Y, ~sid ), In_Auth( Y, 'A', KsampleB, 'sample' ) ]
+  --[ Receive_SampleB( Y, 'A', KsampleB ) ]->
+   [ Alice_Received_KsampleB( 'A', Y, ~sid, KsampleB ) ]
+
+  // loop breaker: [1]
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Alice_Paramater_Estimation_NoEve:
+   [
+   SifttedKeyA( 'A', Y, ~sid, BB, KA ),
+   Alice_Sent_KsampleA( 'A', Y, ~sid, KsampleA ),
+   Alice_Received_KsampleB( 'A', Y, ~sid, KsampleB )
+   ]
+  --[
+  Eq( true, Check_NoEve(KsampleA, KsampleB) ), Running_A( 'A', Y, ~sid )
+  ]->
+   [ KeywithErrorA( 'A', Y, ~sid, KA ) ]
+
+  /*
+  rule (modulo AC) Alice_Paramater_Estimation_NoEve:
+     [
+     SifttedKeyA( 'A', Y, ~sid, BB, KA ),
+     Alice_Sent_KsampleA( 'A', Y, ~sid, KsampleA ),
+     Alice_Received_KsampleB( 'A', Y, ~sid, KsampleB )
+     ]
+    --[ Eq( true, z ), Running_A( 'A', Y, ~sid ) ]->
+     [ KeywithErrorA( 'A', Y, ~sid, KA ) ]
+    variants (modulo AC)
+    1. KsampleA
+             = KsampleA.10
+       KsampleB
+             = KsampleA.10
+       z     = true
+    
+    2. KsampleA
+             = KsampleA.10
+       KsampleB
+             = KsampleB.11
+       z     = Check_NoEve(KsampleA.10, KsampleB.11)
+    
+    3. KsampleA
+             = Sample(Sift_key(RawKey(key(Noise(x.12), BA(x.13))), BA(x.13),
+                               BB(x.14)))
+       KsampleB
+             = Sample(Sift_key(Measure(Encode(RawKey(key(Noise(x.12), BA(x.13))),
+                                              BA(x.13)),
+                                       BB(x.14)),
+                               BA(x.13), BB(x.14)))
+       z     = true
+  */
+
+rule (modulo E) Alice_Paramater_Estimation_Eve:
+   [
+   Alice_Sent_KsampleA( 'A', Y, ~sid, KsampleA ),
+   Alice_Received_KsampleB( 'A', Y, ~sid, KsampleB )
+   ]
+  --[
+  Neq( true, Check_NoEve(KsampleA, KsampleB) ),
+  EveDetected_A( 'A', Y, ~sid )
+  ]->
+   [ ]
+
+  /*
+  rule (modulo AC) Alice_Paramater_Estimation_Eve:
+     [
+     Alice_Sent_KsampleA( 'A', Y, ~sid, KsampleA ),
+     Alice_Received_KsampleB( 'A', Y, ~sid, KsampleB )
+     ]
+    --[ Neq( true, z ), EveDetected_A( 'A', Y, ~sid ) ]->
+     [ ]
+    variants (modulo AC)
+    1. KsampleA
+             = KsampleA.8
+       KsampleB
+             = KsampleA.8
+       z     = true
+    
+    2. KsampleA
+             = KsampleA.8
+       KsampleB
+             = KsampleB.9
+       z     = Check_NoEve(KsampleA.8, KsampleB.9)
+    
+    3. KsampleA
+             = Sample(Sift_key(RawKey(key(Noise(x.10), BA(x.11))), BA(x.11),
+                               BB(x.12)))
+       KsampleB
+             = Sample(Sift_key(Measure(Encode(RawKey(key(Noise(x.10), BA(x.11))),
+                                              BA(x.11)),
+                                       BB(x.12)),
+                               BA(x.11), BB(x.12)))
+       z     = true
+  */
+
+rule (modulo E) Bob_quantum_phase:
+   [ Fr( ~bb ), SessionB( X, 'B', ~sid ), In_QuantumChannel( X, 'B', qA ) ]
+  --[ SessionInitB( X, 'B', ~sid ), Create_B( 'A', ~sid ) ]->
+   [
+   !AuthSession( 'B', ~sid ),
+   Measured( X, 'B', ~sid, Measure(qA, BB(~bb)) ),
+   BobBasis( X, 'B', ~sid, BB(~bb) ), GetAliceBasis( X, 'B', ~sid )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Bob_Send_BB:
+   [ BobBasis( X, 'B', ~sid, BB ) ]
+  --[ Send_BB( 'B', X, BB ) ]->
+   [ Out_Auth( 'B', X, BB, 'sift' ), Bob_Sent_BB( 'B', X, ~sid, BB ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Bob_Receive_BA:
+   [ GetAliceBasis( X, 'B', ~sid ), In_Auth( X, 'B', BA, 'sift' ) ]
+  --[ Receive_BA( X, 'B', BA ) ]->
+   [ Bob_Received_BA( X, 'B', ~sid, BA ) ]
+
+  // loop breaker: [1]
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Bob_SiftB:
+   [
+   Measured( X, 'B', ~sid, KBraw ), Bob_Sent_BB( 'B', X, ~sid, BB ),
+   Bob_Received_BA( X, 'B', ~sid, BA )
+   ]
+  --[ SiftB( X, 'B', ~sid, Sift_key(KBraw, BA, BB) ) ]->
+   [
+   SifttedKeyB( X, 'B', ~sid, BA, Sift_key(KBraw, BA, BB) ),
+   SampleKeyB( X, 'B', ~sid, Sift_key(KBraw, BA, BB) ),
+   GetSampleB( X, 'B', ~sid )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Bob_Send_SampleB:
+   [ SampleKeyB( X, 'B', ~sid, KB ) ]
+  --[ Send_SampleB( 'B', X, Sample(KB) ) ]->
+   [
+   Out_Auth( 'B', X, Sample(KB), 'sample' ),
+   Bob_Sent_KsampleB( X, 'B', ~sid, Sample(KB) )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Bob_Receive_SampleA:
+   [ GetSampleB( X, 'B', ~sid ), In_Auth( X, 'B', KsampleA, 'sample' ) ]
+  --[ Receive_SampleA( X, 'B', KsampleA ) ]->
+   [ Bob_Received_KsampleA( X, 'B', ~sid, KsampleA ) ]
+
+  // loop breaker: [1]
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Bob_Paramater_Estimation_NoEve:
+   [
+   SifttedKeyB( X, 'B', ~sid, BA, KB ),
+   Bob_Sent_KsampleB( X, 'B', ~sid, KsampleB ),
+   Bob_Received_KsampleA( X, 'B', ~sid, KsampleA )
+   ]
+  --[
+  Eq( true, Check_NoEve(KsampleA, KsampleB) ), Running_B( X, 'B', ~sid )
+  ]->
+   [ KeywithErrorB( X, 'B', ~sid, KB ) ]
+
+  /*
+  rule (modulo AC) Bob_Paramater_Estimation_NoEve:
+     [
+     SifttedKeyB( X, 'B', ~sid, BA, KB ),
+     Bob_Sent_KsampleB( X, 'B', ~sid, KsampleB ),
+     Bob_Received_KsampleA( X, 'B', ~sid, KsampleA )
+     ]
+    --[ Eq( true, z ), Running_B( X, 'B', ~sid ) ]->
+     [ KeywithErrorB( X, 'B', ~sid, KB ) ]
+    variants (modulo AC)
+    1. KsampleA
+             = KsampleA.10
+       KsampleB
+             = KsampleA.10
+       z     = true
+    
+    2. KsampleA
+             = KsampleA.10
+       KsampleB
+             = KsampleB.11
+       z     = Check_NoEve(KsampleA.10, KsampleB.11)
+    
+    3. KsampleA
+             = Sample(Sift_key(RawKey(key(Noise(x.12), BA(x.13))), BA(x.13),
+                               BB(x.14)))
+       KsampleB
+             = Sample(Sift_key(Measure(Encode(RawKey(key(Noise(x.12), BA(x.13))),
+                                              BA(x.13)),
+                                       BB(x.14)),
+                               BA(x.13), BB(x.14)))
+       z     = true
+  */
+
+rule (modulo E) Bob_Paramater_Estimation_Eve:
+   [
+   Bob_Sent_KsampleB( X, 'B', ~sid, KsampleB ),
+   Bob_Received_KsampleA( X, 'B', ~sid, KsampleA )
+   ]
+  --[
+  Neq( true, Check_NoEve(KsampleA, KsampleB) ),
+  EveDetected_B( X, 'B', ~sid )
+  ]->
+   [ ]
+
+  /*
+  rule (modulo AC) Bob_Paramater_Estimation_Eve:
+     [
+     Bob_Sent_KsampleB( X, 'B', ~sid, KsampleB ),
+     Bob_Received_KsampleA( X, 'B', ~sid, KsampleA )
+     ]
+    --[ Neq( true, z ), EveDetected_B( X, 'B', ~sid ) ]->
+     [ ]
+    variants (modulo AC)
+    1. KsampleA
+             = KsampleA.8
+       KsampleB
+             = KsampleA.8
+       z     = true
+    
+    2. KsampleA
+             = KsampleA.8
+       KsampleB
+             = KsampleB.9
+       z     = Check_NoEve(KsampleA.8, KsampleB.9)
+    
+    3. KsampleA
+             = Sample(Sift_key(RawKey(key(Noise(x.10), BA(x.11))), BA(x.11),
+                               BB(x.12)))
+       KsampleB
+             = Sample(Sift_key(Measure(Encode(RawKey(key(Noise(x.10), BA(x.11))),
+                                              BA(x.11)),
+                                       BB(x.12)),
+                               BA(x.11), BB(x.12)))
+       z     = true
+  */
+
+rule (modulo E) Alice_Send_FEC:
+   [ KeywithErrorA( 'A', Y, ~sid, KA ) ]
+  -->
+   [
+   NKeyA( 'A', Y, ~sid, FEC(GenKey(KA)), GenKey(KA) ),
+   Out_Auth( 'A', Y, FEC(GenKey(KA)), 'error' )
+   ]
+
+  /*
+  rule (modulo AC) Alice_Send_FEC:
+     [ KeywithErrorA( 'A', Y, ~sid, KA ) ]
+    -->
+     [ NKeyA( 'A', Y, ~sid, FEC(z), z ), Out_Auth( 'A', Y, FEC(z), 'error' ) ]
+    variants (modulo AC)
+    1. KA    = KA.7
+       z     = GenKey(KA.7)
+    
+    2. KA    = Sift_key(Measure(Encode(RawKey(key(Noise(x.9), BA(x.10))),
+                                       BA(x.10)),
+                                BB(x.11)),
+                        BA(x.10), BB(x.11))
+       z     = Noise(x.9)
+    
+    3. KA    = Sift_key(RawKey(key(Noise(x.9), BA(x.10))), BA(x.10),
+                        BB(x.11))
+       z     = Noise(x.9)
+  */
+
+rule (modulo E) Alice_TWEC:
+   [ NKeyA( 'A', Y, ~sid, EA, NKAB ), In_Auth( Y, 'A', EB, 'error' ) ]
+  --[ CommitKey_A( 'A', Y, ~sid, Correct(NKAB, <EA, EB>) ) ]->
+   [ ]
+
+  /*
+  rule (modulo AC) Alice_TWEC:
+     [ NKeyA( 'A', Y, ~sid, EA, NKAB ), In_Auth( Y, 'A', EB, 'error' ) ]
+    --[ CommitKey_A( 'A', Y, ~sid, z ) ]->
+     [ ]
+    variants (modulo AC)
+    1. EA    = EA.12
+       EB    = EB.13
+       NKAB  = NKAB.14
+       z     = Correct(NKAB.14, <EA.12, EB.13>)
+    
+    2. EA    = FEC(Noise(z.10))
+       EB    = REC(Noise(z.10))
+       NKAB  = Noise(z.10)
+       z     = z.10
+  */
+
+rule (modulo E) Bob_Send_REC:
+   [ KeywithErrorB( X, 'B', ~sid, KB ) ]
+  -->
+   [
+   NKeyA( X, 'B', ~sid, REC(GenKey(KB)), GenKey(KB) ),
+   Out_Auth( 'B', X, REC(GenKey(KB)), 'error' )
+   ]
+
+  /*
+  rule (modulo AC) Bob_Send_REC:
+     [ KeywithErrorB( X, 'B', ~sid, KB ) ]
+    -->
+     [ NKeyA( X, 'B', ~sid, REC(z), z ), Out_Auth( 'B', X, REC(z), 'error' ) ]
+    variants (modulo AC)
+    1. KB    = KB.7
+       z     = GenKey(KB.7)
+    
+    2. KB    = Sift_key(Measure(Encode(RawKey(key(Noise(x.9), BA(x.10))),
+                                       BA(x.10)),
+                                BB(x.11)),
+                        BA(x.10), BB(x.11))
+       z     = Noise(x.9)
+    
+    3. KB    = Sift_key(RawKey(key(Noise(x.9), BA(x.10))), BA(x.10),
+                        BB(x.11))
+       z     = Noise(x.9)
+  */
+
+rule (modulo E) Bob_TWEC:
+   [ NKeyA( X, 'B', ~sid, EB, NKAB ), In_Auth( X, 'B', EA, 'error' ) ]
+  --[ CommitKey_B( X, 'B', ~sid, Correct(NKAB, <EA, EB>) ) ]->
+   [ ]
+
+  /*
+  rule (modulo AC) Bob_TWEC:
+     [ NKeyA( X, 'B', ~sid, EB, NKAB ), In_Auth( X, 'B', EA, 'error' ) ]
+    --[ CommitKey_B( X, 'B', ~sid, z ) ]->
+     [ ]
+    variants (modulo AC)
+    1. EA    = EA.12
+       EB    = EB.13
+       NKAB  = NKAB.14
+       z     = Correct(NKAB.14, <EA.12, EB.13>)
+    
+    2. EA    = FEC(Noise(z.10))
+       EB    = REC(Noise(z.10))
+       NKAB  = Noise(z.10)
+       z     = z.10
+  */
+
+lemma Executability [sources]:
+  exists-trace
+  "∃ A B sid Kab #i #j.
+    (CommitKey_A( A, B, sid, Kab ) @ #i) ∧
+    (CommitKey_B( A, B, sid, Kab ) @ #j)"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ A B sid Kab #i #j.
+  (CommitKey_A( A, B, sid, Kab ) @ #i) ∧
+  (CommitKey_B( A, B, sid, Kab ) @ #j)"
+*/
+induction
+  case non_empty_trace
+  simplify
+  solve( (last(#j))  ∥ (last(#i)) )
+    case case_1
+    solve( NKeyA( 'A', 'B', ~sid, EA, NKAB ) ▶₀ #i )
+      case Alice_Send_FEC
+      solve( In_Auth( 'B', 'A', EB, 'error' ) ▶₁ #i )
+        case ChanIn_Auth
+        solve( NKeyA( 'A', 'B', ~sid, EB, NKAB.1 ) ▶₀ #j )
+          case Bob_Send_REC
+          solve( In_Auth( 'A', 'B', EA, 'error' ) ▶₁ #j )
+            case ChanIn_Auth
+            solve( splitEqs(0) )
+              case split
+              solve( splitEqs(2) )
+                case split_case_1
+                solve( splitEqs(4) )
+                  case split_case_1
+                  solve( In_Auth( 'B', 'A',
+                                  Sample(Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                                 BA(~ba)),
+                                                          BB(x)),
+                                                  BA(~ba), BB(x))),
+                                  'sample'
+                         ) ▶₁ #vr.4 )
+                    case ChanIn_Auth
+                    solve( In_Auth( 'B', 'A', BB(~bb), 'sift' ) ▶₁ #vr.7 )
+                      case ChanIn_Auth
+                      solve( In_Auth( 'A', 'B',
+                                      Sample(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB(~bb))),
+                                      'sample'
+                             ) ▶₁ #vr.17 )
+                        case ChanIn_Auth
+                        solve( In_Auth( 'A', 'B', BA(~ba), 'sift' ) ▶₁ #vr.19 )
+                          case ChanIn_Auth
+                          SOLVED // trace found
+                        qed
+                      qed
+                    qed
+                  qed
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma messsage_authenticiation [sources]:
+  all-traces
+  "∀ A B msg #i.
+    (AChanIn( A, B, msg ) @ #i) ⇒ (∃ #k. AChanOut( A, msg ) @ #k)"
+/*
+guarded formula characterizing all counter-examples:
+"∃ A B msg #i.
+  (AChanIn( A, B, msg ) @ #i) ∧ ∀ #k. (AChanOut( A, msg ) @ #k) ⇒ ⊥"
+*/
+induction
+  case empty_trace
+  by contradiction /* from formulas */
+next
+  case non_empty_trace
+  simplify
+  solve( (last(#i))  ∥
+         (∃ #k. (AChanOut( A, <msg, type> ) @ #k) ∧ ¬(last(#k))) )
+    case case_1
+    solve( !AuthSession( B, key_roleB ) ▶₀ #i )
+      case Alice_quantum_phase_case_1
+      solve( !Auth( A, 'A', msg, tag, type ) ▶₁ #i )
+        case ChanOut_Auth_case_1
+        by contradiction /* from formulas */
+      next
+        case ChanOut_Auth_case_2
+        by contradiction /* from formulas */
+      next
+        case ChanOut_Auth_case_3
+        by contradiction /* from formulas */
+      qed
+    next
+      case Alice_quantum_phase_case_2
+      solve( !Auth( A, 'A', msg, tag, type ) ▶₁ #i )
+        case ChanOut_Auth
+        by contradiction /* from formulas */
+      qed
+    next
+      case Bob_quantum_phase_case_1
+      solve( !Auth( A, 'B', msg, tag, type ) ▶₁ #i )
+        case ChanOut_Auth_case_1
+        by contradiction /* from formulas */
+      next
+        case ChanOut_Auth_case_2
+        by contradiction /* from formulas */
+      next
+        case ChanOut_Auth_case_3
+        by contradiction /* from formulas */
+      qed
+    next
+      case Bob_quantum_phase_case_2
+      solve( !Auth( A, 'B', msg, tag, type ) ▶₁ #i )
+        case ChanOut_Auth
+        by contradiction /* from formulas */
+      qed
+    next
+      case Session_Eve_as_A
+      solve( !Auth( A, 'E', msg, tag, type ) ▶₁ #i )
+        case ChanOut_Auth_case_1
+        by contradiction /* from formulas */
+      next
+        case ChanOut_Auth_case_2
+        by contradiction /* from formulas */
+      next
+        case ChanOut_Auth_case_3
+        by contradiction /* from formulas */
+      next
+        case ChanOut_Auth_case_4
+        by contradiction /* from formulas */
+      qed
+    next
+      case Session_Eve_as_B
+      solve( !Auth( A, 'E', msg, tag, type ) ▶₁ #i )
+        case ChanOut_Auth_case_1
+        by contradiction /* from formulas */
+      next
+        case ChanOut_Auth_case_2
+        by contradiction /* from formulas */
+      next
+        case ChanOut_Auth_case_3
+        by contradiction /* from formulas */
+      next
+        case ChanOut_Auth_case_4
+        by contradiction /* from formulas */
+      qed
+    qed
+  next
+    case case_2
+    by contradiction /* from formulas */
+  qed
+qed
+
+lemma secret_key_A:
+  all-traces
+  "∀ A B sid Kab #init #i #j.
+    (((SessionInitA( A, B, sid ) @ #init) ∧
+      (CommitKey_A( A, B, sid, Kab ) @ #i)) ∧
+     (K( Kab ) @ #j)) ⇒
+    (⊥)"
+/*
+guarded formula characterizing all counter-examples:
+"∃ A B sid Kab #init #i #j.
+  (SessionInitA( A, B, sid ) @ #init) ∧
+  (CommitKey_A( A, B, sid, Kab ) @ #i) ∧
+  (K( Kab ) @ #j)"
+*/
+simplify
+solve( SessionA( 'A', B, ~sid ) ▶₂ #init )
+  case Setup_AB
+  solve( NKeyA( 'A', 'B', ~sid, EA, NKAB ) ▶₀ #i )
+    case Alice_Send_FEC
+    solve( In_Auth( 'B', 'A', EB, 'error' ) ▶₁ #i )
+      case ChanIn_Auth
+      solve( splitEqs(1) )
+        case split_case_1
+        by solve( !KU( ~kab ) @ #vk )
+      next
+        case split_case_2
+        solve( splitEqs(2) )
+          case split_case_1
+          solve( splitEqs(3) )
+            case split_case_1
+            solve( splitEqs(4) )
+              case split_case_1
+              solve( !KU( Correct(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))),
+                                                  BA(~ba), BB)),
+                                  <FEC(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB))), 
+                                   REC(Noise(~kab))>)
+                     ) @ #vk )
+                case c_Correct
+                solve( !KU( GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba),
+                                            BB))
+                       ) @ #vk.1 )
+                  case c_GenKey
+                  solve( !KU( Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB)
+                         ) @ #vk.5 )
+                    case c_Sift_key
+                    solve( !KU( RawKey(key(Noise(~kab), BA(~ba))) ) @ #vk.6 )
+                      case c_RawKey
+                      solve( !KU( key(Noise(~kab), BA(~ba)) ) @ #vk.9 )
+                        case c_key
+                        solve( !KU( Noise(~kab) ) @ #vk.10 )
+                          case c_Noise
+                          by solve( !KU( ~kab ) @ #vk.11 )
+                        qed
+                      qed
+                    qed
+                  qed
+                qed
+              qed
+            next
+              case split_case_2
+              solve( splitEqs(5) )
+                case split_case_1
+                solve( !KU( Correct(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))),
+                                                    BA(~ba), BB)),
+                                    <FEC(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB))), 
+                                     REC(Noise(~kab))>)
+                       ) @ #vk )
+                  case c_Correct
+                  solve( !KU( GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba),
+                                              BB))
+                         ) @ #vk.1 )
+                    case c_GenKey
+                    solve( !KU( Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB)
+                           ) @ #vk.5 )
+                      case c_Sift_key
+                      solve( !KU( RawKey(key(Noise(~kab), BA(~ba))) ) @ #vk.6 )
+                        case c_RawKey
+                        solve( !KU( key(Noise(~kab), BA(~ba)) ) @ #vk.9 )
+                          case c_key
+                          solve( !KU( Noise(~kab) ) @ #vk.10 )
+                            case c_Noise
+                            by solve( !KU( ~kab ) @ #vk.11 )
+                          qed
+                        qed
+                      qed
+                    qed
+                  qed
+                qed
+              next
+                case split_case_2
+                solve( !KU( Correct(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))),
+                                                    BA(~ba), BB)),
+                                    <FEC(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB))), 
+                                     REC(GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                                        BA(~ba)),
+                                                                 BB(~bb)),
+                                                         BA, BB(~bb))))
+                                    >)
+                       ) @ #vk )
+                  case c_Correct
+                  solve( !KU( GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba),
+                                              BB))
+                         ) @ #vk.1 )
+                    case c_GenKey
+                    solve( !KU( Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB)
+                           ) @ #vk.5 )
+                      case c_Sift_key
+                      solve( !KU( RawKey(key(Noise(~kab), BA(~ba))) ) @ #vk.6 )
+                        case c_RawKey
+                        solve( !KU( key(Noise(~kab), BA(~ba)) ) @ #vk.9 )
+                          case c_key
+                          solve( !KU( Noise(~kab) ) @ #vk.10 )
+                            case c_Noise
+                            by solve( !KU( ~kab ) @ #vk.11 )
+                          qed
+                        qed
+                      qed
+                    qed
+                  qed
+                qed
+              qed
+            qed
+          next
+            case split_case_2
+            solve( !KU( Correct(Noise(~kab),
+                                <FEC(Noise(~kab)), 
+                                 REC(GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                                    BA(~ba)),
+                                                             BB(~bb)),
+                                                     BA, BB(~bb))))
+                                >)
+                   ) @ #vk )
+              case c_Correct
+              solve( !KU( Noise(~kab) ) @ #vk.1 )
+                case c_Noise
+                by solve( !KU( ~kab ) @ #vk.5 )
+              qed
+            qed
+          qed
+        next
+          case split_case_2
+          solve( !KU( Correct(Noise(~kab),
+                              <FEC(Noise(~kab)), 
+                               REC(GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                                  BA(~ba)),
+                                                           BB(~bb)),
+                                                   BA, BB(~bb))))
+                              >)
+                 ) @ #vk )
+            case c_Correct
+            solve( !KU( Noise(~kab) ) @ #vk.1 )
+              case c_Noise
+              by solve( !KU( ~kab ) @ #vk.5 )
+            qed
+          qed
+        qed
+      qed
+    qed
+  next
+    case Bob_Send_REC
+    solve( In_Auth( 'B', 'A', EB, 'error' ) ▶₁ #i )
+      case ChanIn_Auth
+      solve( splitEqs(2) )
+        case split_case_1
+        solve( splitEqs(3) )
+          case split_case_1
+          solve( !KU( Correct(Noise(~kab), <REC(Noise(~kab)), REC(Noise(~kab))>)
+                 ) @ #vk )
+            case c_Correct
+            solve( !KU( Noise(~kab) ) @ #vk.1 )
+              case c_Noise
+              by solve( !KU( ~kab ) @ #vk.4 )
+            qed
+          qed
+        next
+          case split_case_2
+          solve( !KU( Correct(GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab),
+                                                                        BA(~ba))),
+                                                             BA(~ba)),
+                                                      BB(~bb)),
+                                              BA, BB(~bb))),
+                              <
+                               REC(GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                                  BA(~ba)),
+                                                           BB(~bb)),
+                                                   BA, BB(~bb)))), 
+                               REC(GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                                  BA(~ba)),
+                                                           BB(~bb)),
+                                                   BA, BB(~bb))))
+                              >)
+                 ) @ #vk )
+            case c_Correct
+            solve( !KU( GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab),
+                                                                  BA(~ba))),
+                                                       BA(~ba)),
+                                                BB(~bb)),
+                                        BA, BB(~bb)))
+                   ) @ #vk.1 )
+              case c_GenKey
+              solve( !KU( Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                  BA(~ba)),
+                                           BB(~bb)),
+                                   BA, BB(~bb))
+                     ) @ #vk.4 )
+                case c_Sift_key
+                by solve( !KU( Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                              BA(~ba)),
+                                       BB(~bb))
+                          ) @ #vk.5 )
+              qed
+            qed
+          qed
+        qed
+      next
+        case split_case_2
+        solve( !KU( Correct(Noise(~kab), <REC(Noise(~kab)), REC(Noise(~kab))>)
+               ) @ #vk )
+          case c_Correct
+          solve( !KU( Noise(~kab) ) @ #vk.1 )
+            case c_Noise
+            by solve( !KU( ~kab ) @ #vk.4 )
+          qed
+        qed
+      qed
+    qed
+  qed
+next
+  case Setup_AE
+  solve( NKeyA( 'A', 'E', ~sid, EA, NKAB ) ▶₀ #i )
+    case Alice_Send_FEC
+    solve( In_Auth( 'E', 'A', EB, 'error' ) ▶₁ #i )
+      case ChanIn_Auth_case_1
+      solve( splitEqs(1) )
+        case split_case_1
+        solve( splitEqs(2) )
+          case split_case_1
+          solve( splitEqs(3) )
+            case split_case_1
+            solve( !KU( Correct(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))),
+                                                BA(~ba), BB)),
+                                <FEC(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB))), 
+                                 EB>)
+                   ) @ #vk )
+              case c_Correct
+              solve( !KU( GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba),
+                                          BB))
+                     ) @ #vk.9 )
+                case c_GenKey
+                solve( !KU( Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB)
+                       ) @ #vk.11 )
+                  case c_Sift_key
+                  solve( !KU( RawKey(key(Noise(~kab), BA(~ba))) ) @ #vk.12 )
+                    case c_RawKey
+                    solve( !KU( key(Noise(~kab), BA(~ba)) ) @ #vk.15 )
+                      case c_key
+                      solve( !KU( Noise(~kab) ) @ #vk.16 )
+                        case c_Noise
+                        by solve( !KU( ~kab ) @ #vk.17 )
+                      qed
+                    qed
+                  qed
+                qed
+              qed
+            qed
+          next
+            case split_case_2
+            solve( !KU( Correct(Noise(~kab), <FEC(Noise(~kab)), EB>) ) @ #vk )
+              case c_Correct
+              solve( !KU( Noise(~kab) ) @ #vk.9 )
+                case c_Noise
+                by solve( !KU( ~kab ) @ #vk.11 )
+              qed
+            qed
+          qed
+        next
+          case split_case_2
+          solve( !KU( Correct(Noise(~kab), <FEC(Noise(~kab)), EB>) ) @ #vk )
+            case c_Correct
+            solve( !KU( Noise(~kab) ) @ #vk.9 )
+              case c_Noise
+              by solve( !KU( ~kab ) @ #vk.11 )
+            qed
+          qed
+        qed
+      next
+        case split_case_2
+        by solve( !KU( ~kab ) @ #vk )
+      qed
+    next
+      case ChanIn_Auth_case_2
+      solve( splitEqs(1) )
+        case split_case_1
+        solve( splitEqs(2) )
+          case split_case_1
+          solve( splitEqs(3) )
+            case split_case_1
+            solve( !KU( Correct(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))),
+                                                BA(~ba), BB)),
+                                <FEC(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB))), 
+                                 EB>)
+                   ) @ #vk )
+              case c_Correct
+              solve( !KU( GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba),
+                                          BB))
+                     ) @ #vk.9 )
+                case c_GenKey
+                solve( !KU( Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB)
+                       ) @ #vk.11 )
+                  case c_Sift_key
+                  solve( !KU( RawKey(key(Noise(~kab), BA(~ba))) ) @ #vk.12 )
+                    case c_RawKey
+                    solve( !KU( key(Noise(~kab), BA(~ba)) ) @ #vk.15 )
+                      case c_key
+                      solve( !KU( Noise(~kab) ) @ #vk.16 )
+                        case c_Noise
+                        by solve( !KU( ~kab ) @ #vk.17 )
+                      qed
+                    qed
+                  qed
+                qed
+              qed
+            qed
+          next
+            case split_case_2
+            solve( !KU( Correct(Noise(~kab), <FEC(Noise(~kab)), EB>) ) @ #vk )
+              case c_Correct
+              solve( !KU( Noise(~kab) ) @ #vk.9 )
+                case c_Noise
+                by solve( !KU( ~kab ) @ #vk.11 )
+              qed
+            qed
+          qed
+        next
+          case split_case_2
+          solve( !KU( Correct(Noise(~kab), <FEC(Noise(~kab)), EB>) ) @ #vk )
+            case c_Correct
+            solve( !KU( Noise(~kab) ) @ #vk.9 )
+              case c_Noise
+              by solve( !KU( ~kab ) @ #vk.11 )
+            qed
+          qed
+        qed
+      next
+        case split_case_2
+        by solve( !KU( ~kab ) @ #vk )
+      qed
+    qed
+  qed
+qed
+
+lemma secret_key_B:
+  all-traces
+  "∀ A B sid Kab #init #i #j.
+    (((SessionInitB( A, B, sid ) @ #init) ∧
+      (CommitKey_B( A, B, sid, Kab ) @ #i)) ∧
+     (K( Kab ) @ #j)) ⇒
+    (⊥)"
+/*
+guarded formula characterizing all counter-examples:
+"∃ A B sid Kab #init #i #j.
+  (SessionInitB( A, B, sid ) @ #init) ∧
+  (CommitKey_B( A, B, sid, Kab ) @ #i) ∧
+  (K( Kab ) @ #j)"
+*/
+simplify
+solve( SessionB( A, 'B', ~sid ) ▶₁ #init )
+  case Setup_AB
+  solve( In_QuantumChannel( 'A', 'B', qA ) ▶₂ #init )
+    case QChan_Out_In
+    solve( NKeyA( 'A', 'B', ~sid, EB, NKAB ) ▶₀ #i )
+      case Alice_Send_FEC
+      solve( In_Auth( 'A', 'B', EA, 'error' ) ▶₁ #i )
+        case ChanIn_Auth_case_1
+        solve( splitEqs(2) )
+          case split_case_1
+          solve( splitEqs(3) )
+            case split_case_1
+            solve( !KU( Correct(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))),
+                                                BA(~ba), BB)),
+                                <FEC(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB))), 
+                                 FEC(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB)))>)
+                   ) @ #vk )
+              case c_Correct
+              solve( !KU( GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba),
+                                          BB))
+                     ) @ #vk.1 )
+                case c_GenKey
+                solve( !KU( Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB)
+                       ) @ #vk.4 )
+                  case c_Sift_key
+                  solve( !KU( RawKey(key(Noise(~kab), BA(~ba))) ) @ #vk.5 )
+                    case c_RawKey
+                    solve( !KU( key(Noise(~kab), BA(~ba)) ) @ #vk.8 )
+                      case c_key
+                      solve( !KU( Noise(~kab) ) @ #vk.9 )
+                        case c_Noise
+                        by solve( !KU( ~kab ) @ #vk.10 )
+                      qed
+                    qed
+                  qed
+                qed
+              qed
+            qed
+          next
+            case split_case_2
+            solve( !KU( Correct(Noise(~kab), <FEC(Noise(~kab)), FEC(Noise(~kab))>)
+                   ) @ #vk )
+              case c_Correct
+              solve( !KU( Noise(~kab) ) @ #vk.1 )
+                case c_Noise
+                by solve( !KU( ~kab ) @ #vk.4 )
+              qed
+            qed
+          qed
+        next
+          case split_case_2
+          solve( !KU( Correct(Noise(~kab), <FEC(Noise(~kab)), FEC(Noise(~kab))>)
+                 ) @ #vk )
+            case c_Correct
+            solve( !KU( Noise(~kab) ) @ #vk.1 )
+              case c_Noise
+              by solve( !KU( ~kab ) @ #vk.4 )
+            qed
+          qed
+        qed
+      next
+        case ChanIn_Auth_case_2
+        solve( splitEqs(2) )
+          case split
+          by solve( splitEqs(3) )
+        qed
+      next
+        case ChanIn_Auth_case_3
+        solve( splitEqs(2) )
+          case split
+          by solve( splitEqs(3) )
+        qed
+      qed
+    next
+      case Bob_Send_REC
+      solve( In_Auth( 'A', 'B', EA, 'error' ) ▶₁ #i )
+        case ChanIn_Auth_case_1
+        solve( splitEqs(1) )
+          case split_case_1
+          by solve( !KU( ~kab ) @ #vk )
+        next
+          case split_case_2
+          solve( splitEqs(2) )
+            case split_case_1
+            solve( splitEqs(3) )
+              case split_case_1
+              solve( !KU( Correct(Noise(~kab),
+                                  <FEC(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB))), 
+                                   REC(Noise(~kab))>)
+                     ) @ #vk )
+                case c_Correct
+                solve( !KU( Noise(~kab) ) @ #vk.1 )
+                  case c_Noise
+                  by solve( !KU( ~kab ) @ #vk.5 )
+                qed
+              qed
+            next
+              case split_case_2
+              solve( splitEqs(4) )
+                case split_case_1
+                solve( splitEqs(5) )
+                  case split_case_1
+                  solve( !KU( Correct(GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab),
+                                                                                BA(~ba))),
+                                                                     BA(~ba)),
+                                                              BB(~bb)),
+                                                      BA, BB(~bb))),
+                                      <FEC(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB))), 
+                                       REC(GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                                          BA(~ba)),
+                                                                   BB(~bb)),
+                                                           BA, BB(~bb))))
+                                      >)
+                         ) @ #vk )
+                    case c_Correct
+                    solve( !KU( GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab),
+                                                                          BA(~ba))),
+                                                               BA(~ba)),
+                                                        BB(~bb)),
+                                                BA, BB(~bb)))
+                           ) @ #vk.1 )
+                      case c_GenKey
+                      solve( !KU( Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                          BA(~ba)),
+                                                   BB(~bb)),
+                                           BA, BB(~bb))
+                             ) @ #vk.5 )
+                        case c_Sift_key
+                        by solve( !KU( Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                      BA(~ba)),
+                                               BB(~bb))
+                                  ) @ #vk.6 )
+                      qed
+                    qed
+                  qed
+                next
+                  case split_case_2
+                  solve( !KU( Correct(GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab),
+                                                                                BA(~ba))),
+                                                                     BA(~ba)),
+                                                              BB(~bb)),
+                                                      BA, BB(~bb))),
+                                      <FEC(Noise(~kab)), 
+                                       REC(GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                                          BA(~ba)),
+                                                                   BB(~bb)),
+                                                           BA, BB(~bb))))
+                                      >)
+                         ) @ #vk )
+                    case c_Correct
+                    solve( !KU( GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab),
+                                                                          BA(~ba))),
+                                                               BA(~ba)),
+                                                        BB(~bb)),
+                                                BA, BB(~bb)))
+                           ) @ #vk.1 )
+                      case c_GenKey
+                      solve( !KU( Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                          BA(~ba)),
+                                                   BB(~bb)),
+                                           BA, BB(~bb))
+                             ) @ #vk.5 )
+                        case c_Sift_key
+                        by solve( !KU( Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                      BA(~ba)),
+                                               BB(~bb))
+                                  ) @ #vk.6 )
+                      qed
+                    qed
+                  qed
+                qed
+              next
+                case split_case_2
+                solve( !KU( Correct(GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab),
+                                                                              BA(~ba))),
+                                                                   BA(~ba)),
+                                                            BB(~bb)),
+                                                    BA, BB(~bb))),
+                                    <FEC(Noise(~kab)), 
+                                     REC(GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                                        BA(~ba)),
+                                                                 BB(~bb)),
+                                                         BA, BB(~bb))))
+                                    >)
+                       ) @ #vk )
+                  case c_Correct
+                  solve( !KU( GenKey(Sift_key(Measure(Encode(RawKey(key(Noise(~kab),
+                                                                        BA(~ba))),
+                                                             BA(~ba)),
+                                                      BB(~bb)),
+                                              BA, BB(~bb)))
+                         ) @ #vk.1 )
+                    case c_GenKey
+                    solve( !KU( Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                        BA(~ba)),
+                                                 BB(~bb)),
+                                         BA, BB(~bb))
+                           ) @ #vk.5 )
+                      case c_Sift_key
+                      by solve( !KU( Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                    BA(~ba)),
+                                             BB(~bb))
+                                ) @ #vk.6 )
+                    qed
+                  qed
+                qed
+              qed
+            qed
+          next
+            case split_case_2
+            solve( !KU( Correct(Noise(~kab),
+                                <FEC(GenKey(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB))), 
+                                 REC(Noise(~kab))>)
+                   ) @ #vk )
+              case c_Correct
+              solve( !KU( Noise(~kab) ) @ #vk.1 )
+                case c_Noise
+                by solve( !KU( ~kab ) @ #vk.5 )
+              qed
+            qed
+          qed
+        qed
+      next
+        case ChanIn_Auth_case_2
+        solve( splitEqs(1) )
+          case split
+          solve( splitEqs(2) )
+            case split
+            solve( splitEqs(3) )
+              case split
+              solve( splitEqs(4) )
+                case split
+                by solve( splitEqs(5) )
+              qed
+            qed
+          qed
+        qed
+      next
+        case ChanIn_Auth_case_3
+        solve( splitEqs(1) )
+          case split
+          solve( splitEqs(2) )
+            case split
+            solve( splitEqs(3) )
+              case split
+              solve( splitEqs(4) )
+                case split
+                by solve( splitEqs(5) )
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+next
+  case Setup_EB
+  solve( In_QuantumChannel( 'E', 'B', qA ) ▶₂ #init )
+    case QChan_Out_In
+    solve( NKeyA( 'E', 'B', ~sid, EB, NKAB ) ▶₀ #i )
+      case Bob_Send_REC
+      solve( In_Auth( 'E', 'B', EA, 'error' ) ▶₁ #i )
+        case ChanIn_Auth_case_1
+        solve( !KU( Correct(GenKey(Sift_key(Measure(Encode(key(Noise(KE), BE),
+                                                           BE),
+                                                    BB(~bb)),
+                                            BA, BB(~bb))),
+                            <EA, 
+                             REC(GenKey(Sift_key(Measure(Encode(key(Noise(KE), BE), BE), BB(~bb)), BA,
+                                                 BB(~bb))))
+                            >)
+               ) @ #vk )
+          case c_Correct
+          solve( !KU( GenKey(Sift_key(Measure(Encode(key(Noise(KE), BE), BE),
+                                              BB(~bb)),
+                                      BA, BB(~bb)))
+                 ) @ #vk.13 )
+            case c_GenKey
+            solve( !KU( Sift_key(Measure(Encode(key(Noise(KE), BE), BE), BB(~bb)),
+                                 BA, BB(~bb))
+                   ) @ #vk.15 )
+              case c_Sift_key
+              by solve( !KU( Measure(Encode(key(Noise(KE), BE), BE), BB(~bb))
+                        ) @ #vk.16 )
+            qed
+          qed
+        qed
+      next
+        case ChanIn_Auth_case_2
+        solve( !KU( Correct(GenKey(Sift_key(Measure(Encode(key(Noise(KE), BE),
+                                                           BE),
+                                                    BB(~bb)),
+                                            BA, BB(~bb))),
+                            <EA, 
+                             REC(GenKey(Sift_key(Measure(Encode(key(Noise(KE), BE), BE), BB(~bb)), BA,
+                                                 BB(~bb))))
+                            >)
+               ) @ #vk )
+          case c_Correct
+          solve( !KU( GenKey(Sift_key(Measure(Encode(key(Noise(KE), BE), BE),
+                                              BB(~bb)),
+                                      BA, BB(~bb)))
+                 ) @ #vk.13 )
+            case c_GenKey
+            solve( !KU( Sift_key(Measure(Encode(key(Noise(KE), BE), BE), BB(~bb)),
+                                 BA, BB(~bb))
+                   ) @ #vk.15 )
+              case c_Sift_key
+              by solve( !KU( Measure(Encode(key(Noise(KE), BE), BE), BB(~bb))
+                        ) @ #vk.16 )
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma aliveness_A:
+  all-traces
+  "∀ B sid kab #i.
+    (CommitKey_A( 'A', B, sid, kab ) @ #i) ⇒
+    (∃ #j. Create_B( 'A', sid ) @ #j)"
+/*
+guarded formula characterizing all counter-examples:
+"∃ B sid kab #i.
+  (CommitKey_A( 'A', B, sid, kab ) @ #i)
+ ∧
+  ∀ #j. (Create_B( 'A', sid ) @ #j) ⇒ ⊥"
+*/
+simplify
+solve( NKeyA( 'A', B, ~sid, EA, NKAB ) ▶₀ #i )
+  case Alice_Send_FEC_case_2
+  solve( In_Auth( 'E', 'A', EB, 'error' ) ▶₁ #i )
+    case ChanIn_Auth_case_1
+    solve( splitEqs(0) )
+      case split_case_1
+      solve( splitEqs(1) )
+        case split_case_1
+        solve( splitEqs(2) )
+          case split_case_1
+          solve( In_Auth( 'E', 'A',
+                          Sample(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB)),
+                          'sample'
+                 ) ▶₁ #vr.4 )
+            case ChanIn_Auth_case_1
+            solve( !KU( Sample(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba),
+                                        BB))
+                   ) @ #vk.10 )
+              case Eve_as_A_In_Auth
+              solve( In_Auth( 'E', 'A', BB, 'sift' ) ▶₁ #vr.7 )
+                case ChanIn_Auth_case_1
+                SOLVED // trace found
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma aliveness_B:
+  all-traces
+  "∀ A sid kab #i.
+    (CommitKey_B( A, 'B', sid, kab ) @ #i) ⇒
+    (∃ #j. (Create_A( 'B', sid ) @ #j) ∧ (#j < #i))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ A sid kab #i.
+  (CommitKey_B( A, 'B', sid, kab ) @ #i)
+ ∧
+  ∀ #j. (Create_A( 'B', sid ) @ #j) ⇒ ¬(#j < #i)"
+*/
+simplify
+solve( NKeyA( A, 'B', ~sid, EB, NKAB ) ▶₀ #i )
+  case Bob_Send_REC_case_2
+  solve( In_Auth( 'E', 'B', EA, 'error' ) ▶₁ #i )
+    case ChanIn_Auth_case_1
+    solve( In_Auth( 'E', 'B',
+                    Sample(Sift_key(Measure(Encode(key(Noise(KE), BE), BE), BB(~bb)), BA,
+                                    BB(~bb))),
+                    'sample'
+           ) ▶₁ #vr.4 )
+      case ChanIn_Auth_case_1
+      solve( !KU( Sample(Sift_key(Measure(Encode(key(Noise(KE), BE), BE),
+                                          BB(~bb)),
+                                  BA, BB(~bb)))
+             ) @ #vk.14 )
+        case Eve_as_A_In_Auth
+        solve( In_Auth( 'E', 'B', BA, 'sift' ) ▶₁ #vr.7 )
+          case ChanIn_Auth_case_1
+          SOLVED // trace found
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma weak_agreement_A:
+  all-traces
+  "∀ B sid kab #i.
+    (CommitKey_A( 'A', B, sid, kab ) @ #i) ⇒
+    (∃ sid2 #j. Running_B( 'A', B, sid2 ) @ #j)"
+/*
+guarded formula characterizing all counter-examples:
+"∃ B sid kab #i.
+  (CommitKey_A( 'A', B, sid, kab ) @ #i)
+ ∧
+  ∀ sid2 #j. (Running_B( 'A', B, sid2 ) @ #j) ⇒ ⊥"
+*/
+simplify
+solve( NKeyA( 'A', B, ~sid, EA, NKAB ) ▶₀ #i )
+  case Alice_Send_FEC_case_2
+  solve( In_Auth( 'E', 'A', EB, 'error' ) ▶₁ #i )
+    case ChanIn_Auth_case_1
+    solve( splitEqs(0) )
+      case split_case_1
+      solve( splitEqs(1) )
+        case split_case_1
+        solve( splitEqs(2) )
+          case split_case_1
+          solve( In_Auth( 'E', 'A',
+                          Sample(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB)),
+                          'sample'
+                 ) ▶₁ #vr.4 )
+            case ChanIn_Auth_case_1
+            solve( !KU( Sample(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba),
+                                        BB))
+                   ) @ #vk.10 )
+              case Eve_as_A_In_Auth
+              solve( In_Auth( 'E', 'A', BB, 'sift' ) ▶₁ #vr.7 )
+                case ChanIn_Auth_case_1
+                SOLVED // trace found
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma weak_agreement_B:
+  all-traces
+  "∀ A sid kab #i.
+    (CommitKey_B( A, 'B', sid, kab ) @ #i) ⇒
+    (∃ sid2 #j. Running_A( A, 'B', sid2 ) @ #j)"
+/*
+guarded formula characterizing all counter-examples:
+"∃ A sid kab #i.
+  (CommitKey_B( A, 'B', sid, kab ) @ #i)
+ ∧
+  ∀ sid2 #j. (Running_A( A, 'B', sid2 ) @ #j) ⇒ ⊥"
+*/
+simplify
+solve( NKeyA( A, 'B', ~sid, EB, NKAB ) ▶₀ #i )
+  case Bob_Send_REC_case_2
+  solve( In_Auth( 'E', 'B', EA, 'error' ) ▶₁ #i )
+    case ChanIn_Auth_case_1
+    solve( In_Auth( 'E', 'B',
+                    Sample(Sift_key(Measure(Encode(key(Noise(KE), BE), BE), BB(~bb)), BA,
+                                    BB(~bb))),
+                    'sample'
+           ) ▶₁ #vr.4 )
+      case ChanIn_Auth_case_1
+      solve( !KU( Sample(Sift_key(Measure(Encode(key(Noise(KE), BE), BE),
+                                          BB(~bb)),
+                                  BA, BB(~bb)))
+             ) @ #vk.14 )
+        case Eve_as_A_In_Auth
+        solve( In_Auth( 'E', 'B', BA, 'sift' ) ▶₁ #vr.7 )
+          case ChanIn_Auth_case_1
+          SOLVED // trace found
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma noninjectiveagreement_A:
+  all-traces
+  "∀ B sid kab #i.
+    (CommitKey_A( 'A', B, sid, kab ) @ #i) ⇒
+    (∃ #j. CommitKey_B( 'A', B, sid, kab ) @ #j)"
+/*
+guarded formula characterizing all counter-examples:
+"∃ B sid kab #i.
+  (CommitKey_A( 'A', B, sid, kab ) @ #i)
+ ∧
+  ∀ #j. (CommitKey_B( 'A', B, sid, kab ) @ #j) ⇒ ⊥"
+*/
+simplify
+solve( NKeyA( 'A', B, ~sid, EA, NKAB ) ▶₀ #i )
+  case Bob_Send_REC
+  solve( In_Auth( 'B', 'A', EB, 'error' ) ▶₁ #i )
+    case ChanIn_Auth
+    solve( splitEqs(1) )
+      case split_case_2
+      solve( In_Auth( 'A', 'B',
+                      Sample(Sift_key(RawKey(key(Noise(~kab), BA(~ba))), BA(~ba), BB(~bb))),
+                      'sample'
+             ) ▶₁ #vr.4 )
+        case ChanIn_Auth
+        solve( In_Auth( 'A', 'B', BA(~ba), 'sift' ) ▶₁ #vr.7 )
+          case ChanIn_Auth
+          solve( In_Auth( 'B', 'A', BB(~bb), 'sift' ) ▶₁ #vr.18 )
+            case ChanIn_Auth
+            SOLVED // trace found
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma noninjectiveagreement_B:
+  all-traces
+  "∀ A sid kab #i.
+    (CommitKey_B( A, 'B', sid, kab ) @ #i) ⇒
+    (∃ #j. CommitKey_A( A, 'B', sid, kab ) @ #j)"
+/*
+guarded formula characterizing all counter-examples:
+"∃ A sid kab #i.
+  (CommitKey_B( A, 'B', sid, kab ) @ #i)
+ ∧
+  ∀ #j. (CommitKey_A( A, 'B', sid, kab ) @ #j) ⇒ ⊥"
+*/
+simplify
+solve( NKeyA( A, 'B', ~sid, EB, NKAB ) ▶₀ #i )
+  case Alice_Send_FEC
+  solve( In_Auth( 'A', 'B', EA, 'error' ) ▶₁ #i )
+    case ChanIn_Auth_case_1
+    solve( splitEqs(1) )
+      case split_case_2
+      solve( In_Auth( 'B', 'A',
+                      Sample(Sift_key(Measure(Encode(RawKey(key(Noise(~kab), BA(~ba))),
+                                                     BA(~ba)),
+                                              BB(x)),
+                                      BA(~ba), BB(x))),
+                      'sample'
+             ) ▶₁ #vr.4 )
+        case ChanIn_Auth
+        solve( In_Auth( 'B', 'A', BB(~bb), 'sift' ) ▶₁ #vr.7 )
+          case ChanIn_Auth
+          solve( In_Auth( 'A', 'B', BA(~ba), 'sift' ) ▶₁ #vr.18 )
+            case ChanIn_Auth
+            SOLVED // trace found
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* All wellformedness checks were successful. */
+
+/*
+Generated from:
+Tamarin version 1.8.0
+Maude version 3.2.1
+Git revision: f172d7f00b1485446a1e7a42dc14623c2189cc42, branch: master
+Compiled at: 2023-09-01 08:49:23.916032222 UTC
+*/
+
+end==============================================================================
+summary of summaries:
+
+analyzed: ./output/PM_Adv_MaliciousUser_SeqB_TWEC.spthy
+
+  output:          ./output/PM_Adv_MaliciousUser_SeqB_TWEC.proof
+  processing time: 28.11s
+  
+  Executability (exists-trace): verified (15 steps)
+  messsage_authenticiation (all-traces): verified (28 steps)
+  secret_key_A (all-traces): verified (86 steps)
+  secret_key_B (all-traces): verified (70 steps)
+  aliveness_A (all-traces): falsified - found trace (10 steps)
+  aliveness_B (all-traces): falsified - found trace (7 steps)
+  weak_agreement_A (all-traces): falsified - found trace (10 steps)
+  weak_agreement_B (all-traces): falsified - found trace (7 steps)
+  noninjectiveagreement_A (all-traces): falsified - found trace (8 steps)
+  noninjectiveagreement_B (all-traces): falsified - found trace (8 steps)
+
+==============================================================================
+
+
